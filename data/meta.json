@@ -1,0 +1,29 @@
+{
+  "vocab": 1024,
+  "seq_len": 96,
+  "pad": 0,
+  "go": 1,
+  "reserved": {
+    "<pad>": 0,
+    "<go>": 1,
+    "<set>": 2,
+    "<read>": 3,
+    "<blink>": 4,
+    "<seq>": 5,
+    "<stop>": 6,
+    "<unknown>": 7,
+    "<alias>": 8,
+    "<pin>": 9,
+    "<all>": 10,
+    "<name>": 11,
+    "<nend>": 12,
+    "<high>": 13,
+    "<low>": 14,
+    "<toggle>": 15,
+    "<int>": 16,
+    "<cnt>": 17,
+    "<end>": 18
+  },
+  "n_train": 146996,
+  "n_val": 3000
+}
