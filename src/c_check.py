@@ -29,8 +29,16 @@ sys.path.insert(0, str(ROOT / "data"))
 
 from evaluate import Decoder  # noqa: E402
 
-BIN = "/tmp/repl"
-SPLITS = ["v1_gemini2_dev", "v1_gemini2_locked", "v1_massive"]
+BIN = str(ROOT / "build" / ("repl.exe" if sys.platform == "win32" else "repl"))
+# 本机 GCC 在项目上一级的 tools/w64devkit 里，不在 PATH 上。
+_GCC = next((p for p in (ROOT / "tools" / "w64devkit" / "bin" / "gcc.exe",
+                         ROOT.parent / "tools" / "w64devkit" / "bin" / "gcc.exe")
+             if p.exists()), None)
+_FLAGS = "-O3 -Ifirmware/generated"
+BUILD_CMD = (f'"{_GCC}" {_FLAGS} -o "{BIN}" firmware/host_verify/repl.c -lm' if _GCC
+             else f'gcc {_FLAGS} -o "{BIN}" firmware/host_verify/repl.c -lm')
+# 本分支的保留集只有中文这一份；英文那三个 split 已不在 data/eval 里。
+SPLITS = ["zh_dev"]
 
 
 @torch.no_grad()
@@ -66,14 +74,14 @@ def main() -> int:
     a = ap.parse_args()
 
     if not Path(BIN).exists():
-        sys.exit(f"missing {BIN} -- build it:\n"
-                 f"  cc -O3 -o {BIN} firmware/host_verify/repl.c -lm")
+        sys.exit(f"missing {BIN} -- build it:\n  {BUILD_CMD}")
 
     texts: list[str] = []
     for s in a.splits:
         p = ROOT / "data" / "eval" / f"{s}.jsonl"
         if p.exists():
-            texts += [json.loads(l)["text"] for l in p.open()][:a.limit]
+            with p.open(encoding="utf-8") as fh:
+                texts += [json.loads(l)["text"] for l in fh][:a.limit]
     # Newlines would break the line-based harness; there are none in the sets,
     # but a stray one would silently shift every later comparison by one.
     texts = [t for t in texts if "\n" not in t and t.strip()]
@@ -86,8 +94,12 @@ def main() -> int:
                  f"published; regenerate or copy them in before releasing.")
     print(f"{len(texts)} utterances from {', '.join(a.splits)}")
 
+    # encoding 必须写死 UTF-8：C 端按 UTF-8 字节切词，而 text=True 默认用
+    # 系统编码（中文机器上是 GBK）。不写死的话，同一句话在两边变成不同的字节，
+    # 报出来的是"MISMATCH"，看着像模型不对，其实是管道编码不对。
     proc = subprocess.run([BIN, a.model], input="\n".join(texts) + "\n",
-                          capture_output=True, text=True)
+                          capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
     if proc.returncode != 0:
         sys.exit(f"repl failed: {proc.stderr[:400]}")
     got = proc.stdout.strip().split("\n")

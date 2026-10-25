@@ -21,10 +21,12 @@
 // would feed the model a token sequence it never saw in training, for exactly
 // the inputs where a wrong answer moves a physical pin.
 //
-// ASCII limitation: GPT-2's pattern classifies with Unicode properties, this
-// classifies with ASCII. Bytes >= 0x80 fall into the "other" class instead of
-// being letters. The command corpus is ASCII so training is unaffected, but
-// typed non-ASCII input may tokenize differently than Python would.
+// Unicode limitation, now UTF-8 aware: classification decodes code points and
+// covers the ranges a command corpus contains (CJK, kana, Hangul, fullwidth
+// forms). An unlisted script falls into punctuation, which is the same class
+// the byte-based version effectively gave it -- correct for nothing it is asked
+// to do here, and checked against Python on every corpus line by
+// src/tok_check.py rather than assumed.
 #ifndef TOKENIZER_H
 #define TOKENIZER_H
 #include <stdint.h>
@@ -47,13 +49,74 @@ typedef struct {
 
 #define TOK_NO_RANK 0xFFFF
 
+// Character classes, UTF-8 aware.
+//
+// **The ASCII-only version was wrong for Chinese, and silently so.** GPT-2's
+// pattern classifies with Unicode properties; the first version here classified
+// bytes, so every byte >= 0x80 fell into the "other" class. For an ASCII corpus
+// that never showed: training and device agreed because there was nothing above
+// 0x7F. With a Chinese corpus it breaks everywhere CJK punctuation appears --
+// Python splits "打开，灯" into letters("打开") + punct("，") + letters("灯")
+// (three chunks, merges cannot cross a boundary) while a byte classifier makes
+// one run of "other" bytes and merges straight through the comma. The prompt
+// then reaches the model tokenized differently from anything it was trained on:
+// no error, no log line, just worse parses. Verified by tok_check.py over real
+// corpus lines, which is the only reason to trust it.
+//
+// The classes are the ones a command corpus can contain, not all of Unicode:
+// CJK ideographs, kana and Hangul as letters; CJK/fullwidth forms split into
+// their letter, digit and punctuation parts; everything else punctuation.
+enum { TOK_CLS_SPACE = 0, TOK_CLS_LETTER, TOK_CLS_DIGIT, TOK_CLS_PUNCT };
+
+static inline int tok_utf8_len(unsigned char c) {
+  if (c < 0x80) return 1;
+  if ((c & 0xE0) == 0xC0) return 2;
+  if ((c & 0xF0) == 0xE0) return 3;
+  if ((c & 0xF8) == 0xF0) return 4;
+  return 1;                       // invalid lead byte: one opaque byte
+}
+
+// Decode the code point at i. Sets *len to the bytes consumed (1 on any
+// malformed sequence, which keeps the walker moving instead of derailing).
+static uint32_t tok_cp(const char *s, int n, int i, int *len) {
+  unsigned char c = (unsigned char)s[i];
+  int l = tok_utf8_len(c);
+  if (l <= 1 || i + l > n) { *len = 1; return c; }
+  uint32_t cp = (l == 2) ? (c & 0x1Fu) : (l == 3) ? (c & 0x0Fu) : (c & 0x07u);
+  for (int k = 1; k < l; k++) {
+    unsigned char cc = (unsigned char)s[i + k];
+    if ((cc & 0xC0) != 0x80) { *len = 1; return c; }
+    cp = (cp << 6) | (cc & 0x3Fu);
+  }
+  *len = l;
+  return cp;
+}
+
+static int tok_class(const char *s, int n, int i, int *len) {
+  uint32_t cp = tok_cp(s, n, i, len);
+  if (cp < 0x80) {
+    if (cp == ' ' || cp == '\t' || cp == '\n' || cp == '\r' ||
+        cp == '\f' || cp == '\v') return TOK_CLS_SPACE;
+    if (cp >= '0' && cp <= '9') return TOK_CLS_DIGIT;
+    if ((cp >= 'a' && cp <= 'z') || (cp >= 'A' && cp <= 'Z'))
+      return TOK_CLS_LETTER;
+    return TOK_CLS_PUNCT;
+  }
+  if (cp == 0x00A0 || cp == 0x3000) return TOK_CLS_SPACE;
+  if (cp >= 0x3400 && cp <= 0x4DBF) return TOK_CLS_LETTER;   // CJK ext A
+  if (cp >= 0x4E00 && cp <= 0x9FFF) return TOK_CLS_LETTER;   // CJK unified
+  if (cp >= 0xF900 && cp <= 0xFAFF) return TOK_CLS_LETTER;   // compat ideographs
+  if (cp >= 0x3040 && cp <= 0x30FF) return TOK_CLS_LETTER;   // kana
+  if (cp >= 0xAC00 && cp <= 0xD7AF) return TOK_CLS_LETTER;   // hangul
+  if (cp >= 0xFF10 && cp <= 0xFF19) return TOK_CLS_DIGIT;    // fullwidth digits
+  if ((cp >= 0xFF21 && cp <= 0xFF3A) ||
+      (cp >= 0xFF41 && cp <= 0xFF5A)) return TOK_CLS_LETTER;
+  return TOK_CLS_PUNCT;
+}
+
 static inline int tok_is_space(unsigned char c) {
   return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
 }
-static inline int tok_is_alpha(unsigned char c) {
-  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-}
-static inline int tok_is_digit(unsigned char c) { return c >= '0' && c <= '9'; }
 
 // Rank of the pair (a, b), or TOK_NO_RANK if it is not a merge. Sets *out to
 // the merged token when found.
@@ -84,43 +147,54 @@ static int tok_contraction(const char *s, int n, int i) {
 //   's|'t|'re|'ve|'m|'ll|'d | ' ?\p{L}+' | ' ?\p{N}+' | ' ?[^\s\p{L}\p{N}]+'
 //   | '\s+(?!\S)' | '\s+'
 // with the Digits pre-tokenizer overriding the number branch (see the header).
-// The optional leading space is a literal space, not any whitespace, which is
-// why a chunk can absorb " word" but never "\nword".
+// The optional leading space is a literal ASCII space, not any whitespace,
+// which is why a chunk can absorb " word" but never "\nword".
+//
+// Runs are walked by code point (tok_class) rather than by byte, so a CJK
+// character counts as one letter and CJK punctuation as one punctuation mark --
+// the same split the Python pre-tokenizer makes.
 static int tok_chunk_len(const char *s, int n, int i) {
   int c = tok_contraction(s, n, i);
   if (c) return c;
 
-  unsigned char here = (unsigned char)s[i];
+  int len = 1;
+  int here = tok_class(s, n, i, &len);
 
   // A digit is always alone, and a space before one stays behind as its own
   // chunk: " 100" -> " ", "1", "0", "0". Checked before the leading-space skip
   // below, which would otherwise hand the space to the digit.
-  if (tok_is_digit(here)) return 1;
-  if (here == ' ' && i + 1 < n && tok_is_digit((unsigned char)s[i + 1])) return 1;
+  if (here == TOK_CLS_DIGIT) return len;
+  if (here == TOK_CLS_SPACE && s[i] == ' ' && i + 1 < n) {
+    int l2 = 1;
+    if (tok_class(s, n, i + 1, &l2) == TOK_CLS_DIGIT) return 1;
+  }
 
-  int j = i + (here == ' ' ? 1 : 0);
+  int j = i + (s[i] == ' ' ? 1 : 0);
 
   if (j < n) {
-    unsigned char cj = (unsigned char)s[j];
-    if (tok_is_alpha(cj)) {
+    int lj = 1;
+    int cj = tok_class(s, n, j, &lj);
+    if (cj == TOK_CLS_LETTER || cj == TOK_CLS_PUNCT) {
       int k = j;
-      while (k < n && tok_is_alpha((unsigned char)s[k])) k++;
-      return k - i;
-    }
-    if (!tok_is_space(cj)) {
-      int k = j;
-      while (k < n && !tok_is_space((unsigned char)s[k])
-             && !tok_is_alpha((unsigned char)s[k])
-             && !tok_is_digit((unsigned char)s[k])) k++;
+      while (k < n) {
+        int l = 1;
+        if (tok_class(s, n, k, &l) != cj) break;
+        k += l;
+      }
       if (k > j) return k - i;
     }
   }
 
   // Whitespace run. '\s+(?!\S)' means a run followed by a non-space keeps its
   // last space for the following chunk's optional leading space.
-  int k = i;
-  while (k < n && tok_is_space((unsigned char)s[k])) k++;
-  if (k < n && k - i > 1) k--;
+  int k = i, last = 1;
+  while (k < n) {
+    int l = 1;
+    if (tok_class(s, n, k, &l) != TOK_CLS_SPACE) break;
+    last = l;
+    k += l;
+  }
+  if (k < n && k - i > 1) k -= last;
   return k > i ? k - i : 1;
 }
 

@@ -180,7 +180,15 @@ def _rows() -> list[tuple[str, str]]:
 
     out: list[tuple[str, str]] = []
     for split in ("train", "validation", "test"):
-        d = load_dataset(HF_DATASET, "en", split=split)
+        try:
+            d = load_dataset(HF_DATASET, "en", split=split)
+        except ValueError:
+            # mteb/amazon_massive_intent now publishes a single "default"
+            # config holding all 51 languages with a `lang` column, instead of
+            # one config per language code. Select en-US by column rather than
+            # failing on the config name.
+            d = load_dataset(HF_DATASET, split=split).filter(
+                lambda r: r["lang"] == "en")
         out += [(r["label_text"], r["text"]) for r in d]
     return out
 

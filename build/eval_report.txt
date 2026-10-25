@@ -1,0 +1,86 @@
+NOTE: the generated split measures the generator against itself.
+      Use --split massive or --split gemini2_dev for a held-out number.
+
+run: cmd-v1-s0.pt   split: val   constrained=False   n=1500
+
+exact-match  (in-domain) : 1028/1066 =  96.44%   [95.15%, 97.39%]
+false-accept (off-domain): 4/434 =   0.92%   [0.36%, 2.35%]
+  .. not <unknown>       : 5/434 =   1.15%   [0.49%, 2.67%]
+pin copy     (in-domain) : 691/696 =  99.28%   [98.33%, 99.69%]
+substitution (off-board) : 1/194 =   0.52%   [0.09%, 2.86%]
+malformed generations    : 1
+
+WRONG PIN MOVED (valid cmd): 11/1066 =   1.03%   [0.58%, 1.84%]
+PIN MOVED (should refuse)  : 3/434 =   0.69%   [0.24%, 2.01%]
+  where the rest of the misses went:
+    valid    n=1066: refused=7, refused_by_name=12, refused_by_range=8, wrong_action=11
+    refusals n=434: refused=1, refused_by_name=1, wrong_action=3
+
+by action:
+  set        363/373    97.32%
+  blink      207/218    94.95%
+  seq        133/141    94.33%
+  read       137/141    97.16%
+  stop        97/101    96.04%
+  alias       91/92     98.91%
+
+false accepts by source:
+  truncated      2
+  massive_far    1
+  synthetic      1
+
+sample failures:
+  in   assert all the pins
+  want <set> <all> <high> <end>
+  got  <unknown> <end>
+
+  in   The event vacuum reading ok?
+  want <read> <name> event vacuum <nend> <end>
+  got  <unknown> <end>
+
+  in   please can you blip the amber plug socket, the back compressor then the teal couple every 5254 millis 84x
+  want <blink> <name> amber plug socket <nend> <name> back compressor <nend> <name> teal couple <nend> <int> 5 2 5 4 <cnt> 8 4 <end>
+  got  <blink> <name> amber plug socket <nend> <name> back compressor <nend> <name> teal2 <nend> <int> 5 2 5 4 <cnt> 8 4 <end>
+
+  in   read that deck speaker, that wadmeal previous, that alarm!
+  want <read> <name> deck speaker <nend> <name> wadmeal previous <nend> <name> alarm <nend> <end>
+  got  <read> <name> deck speaker <nend> <name> wadmeal previous <nend> <end>
+
+  in   Refer to GPIO 1 as the backup undo ok?
+  want <alias> <pin> 1 <name> backup undo <nend> <end>
+  got  <read> <pin> 1 <end>
+
+  in   Cancel chase my seventh protrude
+  want <stop> <name> seventh protrude <nend> <end>
+  got  <stop> <name> seventh protrud <nend> <end>
+
+  in   please step through as well as the switchs six times with a 8000ms interval for me
+  want <seq> <name> switchs <nend> <int> 8 0 0 0 <cnt> 6 <end>
+  got  <seq> <name> switchs <nend> <int> 8 0 0 0 <cnt> 2 <end>
+
+  in   OK MAKE THE UTILITY SIREN FLASH EVERY NINE SECONDS FOR 66 BLINKS FOR ME
+  want <blink> <name> utility siren <nend> <int> 9 0 0 0 <cnt> 6 6 <end>
+  got  <blink> <name> UTILITY SIREN <nend> <int> 2 0 0 0 <cnt> 6 6 <end>
+
+  in   could you pull up the headlines please for me
+  want <unknown>
+  got  <set> <name> headlines <nend> <high> <end>
+
+  in   RIPPLE ACROSS THE RED JOKE, THE VERE_SPOTLIGHT AND THEN THE PANTRY MISTER 5106MS APART 3 TIMES NOW
+  want <seq> <name> red joke <nend> <name> vere_spotlight <nend> <name> pantry mister <nend> <int> 5 1 0 6 <cnt> 3 <end>
+  got  <seq> <name> JOKE <nend> <name> VERE_SPOTLIGHT <nend> <name> SEETRY MISTER <nend> <int> 5 1 0 6 <cnt> 3 <end>
+
+  in   ok make p38 flash until i say stop quickly please
+  want <blink> <pin> 3 8 <int> 2 0 0 <cnt> 0 <end>
+  got  <blink> <pin> 3 8 <int> 1 0 0 <cnt> 0 <end>
+
+  in   pls can you start flashing the dakota printer, the sprinkler_3 and then the humidifier 2 at 1681ms until i say stop thanks
+  want <blink> <name> dakota printer <nend> <name> sprinkler_3 <nend> <name> humidifier 2 <nend> <int> 1 6 8 1 <cnt> 0 <end>
+  got  <blink> <name> dakota printer <nend> <name> sprinkler_3 <nend> <name> humidifier <nend> <int> 1 6 8 1 <cnt> 0 <end>
+
+
+substitutions -- these actuate the wrong pin:
+  in   CAN U MAKE PIN 38 BLINK FOR 4 CYCLES EVERY FIVE MINUTES
+  want <blink> <pin> 3 8 <int> 3 0 0 0 0 0 <cnt> 4 <end>
+  got  <blink> <pin> 3 8 <int> 2 0 0 <cnt> 4 <end>
+

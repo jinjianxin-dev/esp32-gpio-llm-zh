@@ -27,7 +27,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
 TOK = os.path.join(ROOT, "data", "bpe.json")
 CORPUS = os.path.join(ROOT, "data", "corpus", "train.jsonl")
-BIN = "/tmp/tok_test"
+# Built into the repo so the path means the same thing to a POSIX shell and to
+# a native Windows Python (which resolves "/tmp" against the current drive).
+BIN = os.path.join(ROOT, "build", "tok_test" + (".exe" if os.name == "nt" else ""))
+BUILD_CMD = (f'cc -O3 -o "{BIN}" firmware/host_verify/tok_test.c')
 N_LINES = 3000
 
 EDGE_CASES = [
@@ -59,7 +62,7 @@ EDGE_CASES = [
 def main() -> int:
     if not os.path.exists(BIN):
         sys.exit(f"missing {BIN} -- build it first:\n"
-                 f"  cc -O3 -o {BIN} firmware/host_verify/tok_test.c")
+                 f"  {BUILD_CMD}")
 
     tok = Tokenizer.from_file(TOK)
 
