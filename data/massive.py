@@ -180,7 +180,15 @@ def _rows() -> list[tuple[str, str]]:
 
     out: list[tuple[str, str]] = []
     for split in ("train", "validation", "test"):
-        d = load_dataset(HF_DATASET, "en", split=split)
+        try:
+            d = load_dataset(HF_DATASET, "en", split=split)
+        except ValueError:
+            # The dataset used to expose one config per language ("en", "de",
+            # ...). It now ships a single "default" config holding all 51
+            # languages in one `lang` column, so the config name is gone.
+            # Fall back to it and keep only the English rows.
+            d = load_dataset(HF_DATASET, split=split)
+            d = d.filter(lambda r: r.get("lang") == "en")
         out += [(r["label_text"], r["text"]) for r in d]
     return out
 

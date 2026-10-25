@@ -212,7 +212,11 @@ def load_split(split: str) -> list[dict]:
     """An eval/ set by name, falling back to a corpus/ split."""
     held = ROOT / "data" / "eval" / f"{split}.jsonl"
     src = held if held.exists() else ROOT / "data" / "corpus" / f"{split}.jsonl"
-    return [json.loads(l) for l in src.open()]
+    # encoding 必须写死：Windows 上不带 encoding 会按 GBK 解码，
+    # 中文评测集（UTF-8）直接抛 UnicodeDecodeError，而 Linux/UTF-8 模式下
+    # 又跑得好好的——这类不一致最难查。
+    with src.open(encoding="utf-8") as fh:
+        return [json.loads(l) for l in fh]
 
 
 def _pins(f: frames.Frame | None) -> list[int]:

@@ -58,3 +58,9 @@ data/audit_corpus.py
 # Working notes and drafts.
 docs/
 ai_studio_code.txt
+
+# Windows host build artifacts
+build/
+
+# English corpus backup (kept on disk only)
+data/en_backup/

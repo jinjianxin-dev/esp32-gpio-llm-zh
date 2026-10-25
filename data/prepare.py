@@ -152,7 +152,7 @@ def main() -> None:
 
     splits = {}
     for name in ("train", "val"):
-        with (a.corpus / f"{name}.jsonl").open() as fh:
+        with (a.corpus / f"{name}.jsonl").open(encoding="utf-8") as fh:
             splits[name] = [json.loads(line) for line in fh]
         print(f"{name}: {len(splits[name]):,} rows")
 

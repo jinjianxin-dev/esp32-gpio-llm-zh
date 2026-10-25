@@ -39,8 +39,9 @@ MAGIC = 0x434D4431          # "CMD1"
 
 # The prompt the golden is taken over. A pin-numbered command with a two-digit
 # pin on purpose: it exercises the digit path, which is where a tokenizer or
-# emission bug would do real damage.
-GOLDEN_PROMPT = "blink pin 38 every 300ms"
+# emission bug would do real damage. Chinese: it also exercises multi-byte
+# UTF-8 input, which is the new failure surface after the language switch.
+GOLDEN_PROMPT = "让38号脚每300毫秒闪一次"
 
 
 def main() -> None:

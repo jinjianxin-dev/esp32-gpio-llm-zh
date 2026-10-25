@@ -194,8 +194,8 @@ def write_symbols(tok: Tokenizer, meta: dict) -> None:
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     tok = Tokenizer.from_file(str(ROOT / "data" / "bpe.json"))
-    meta = json.loads((ROOT / "data" / "meta.json").read_text())
-    raw = json.loads((ROOT / "data" / "bpe.json").read_text())
+    meta = json.loads((ROOT / "data" / "meta.json").read_text(encoding="utf-8"))
+    raw = json.loads((ROOT / "data" / "bpe.json").read_text(encoding="utf-8"))
 
     write_bpe(tok, raw)
     write_symbols(tok, meta)
